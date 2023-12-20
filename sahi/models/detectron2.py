@@ -12,6 +12,52 @@ from sahi.utils.cv import get_bbox_from_bool_mask
 from sahi.utils.import_utils import check_requirements
 
 logger = logging.getLogger(__name__)
+# OBSS SAHI Tool
+# Code written by Fatih C Akyon, 2020.
+
+import logging
+from typing import List, Optional
+
+import numpy as np
+
+from sahi.models.base import DetectionModel
+from sahi.prediction import ObjectPrediction
+from sahi.utils.cv import get_bbox_from_bool_mask
+from sahi.utils.import_utils import check_requirements
+
+from hierarchical_roi_heads.hierarchical_roi_heads import register_roi_head
+
+from utils.structure_utils import map1_cr, map2_cr, structure1_cr, structure2_cr, single_syn_cr
+
+from detectron2.utils.logger import setup_logger
+setup_logger()
+
+
+# Create map1
+import os
+print(os.getcwd())
+
+
+map1_cr(ontology_jsonld_path='structures/PIDOntology.jsonld')
+
+# Create map2
+map2_cr()
+
+# Create structure2
+structure2_cr(ontology_owl_path='structures/PIDOntology.owl',
+                num_classes=516)
+
+# Create structure1
+structure1_cr()
+
+# Create single_syn
+single_syn_cr()
+
+# Register hierarchical roi head
+register_roi_head()
+
+
+logger = logging.getLogger(__name__)
 
 
 class Detectron2DetectionModel(DetectionModel):
@@ -23,18 +69,33 @@ class Detectron2DetectionModel(DetectionModel):
         from detectron2.data import MetadataCatalog
         from detectron2.engine import DefaultPredictor
         from detectron2.model_zoo import model_zoo
+        from detectron2.data.datasets import register_coco_instances
 
         cfg = get_cfg()
+        cfg.merge_from_file(model_zoo.get_config_file("COCO-Detection/faster_rcnn_R_101_FPN_3x.yaml"))
 
-        try:  # try to load from model zoo
-            config_file = model_zoo.get_config_file(self.config_path)
-            cfg.merge_from_file(config_file)
-            cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(self.config_path)
-        except Exception as e:  # try to load from local
-            print(e)
-            if self.config_path is not None:
-                cfg.merge_from_file(self.config_path)
-            cfg.MODEL.WEIGHTS = self.model_path
+        cfg.MODEL.ROI_HEADS.NAME = "HierarchicalROIHeads"
+        cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG = True
+        cfg.MODEL.ROI_HEADS.SCORE_THRESH_TEST = 0.5
+
+        cfg.MODEL.ROI_HEADS.NUM_CLASSES = 516
+        cfg.MODEL.DEVICE = 'cuda'
+        cfg.MODEL.ROI_BOX_HEAD.CLS_AGNOSTIC_BBOX_REG = True
+        cfg.DATALOADER.NUM_WORKERS = 1
+
+        cfg.INPUT.MIN_SIZE_TEST = 0
+
+        cfg.MODEL.WEIGHTS = self.model_path
+
+        # try:  # try to load from model zoo
+        #     config_file = model_zoo.get_config_file(self.config_path)
+        #     cfg.merge_from_file(config_file)
+        #     cfg.MODEL.WEIGHTS = model_zoo.get_checkpoint_url(self.config_path)
+        # except Exception as e:  # try to load from local
+        #     print(e)
+        #     if self.config_path is not None:
+        #         cfg.merge_from_file(self.config_path)
+        #     cfg.MODEL.WEIGHTS = self.model_path
 
         # set model device
         cfg.MODEL.DEVICE = self.device.type
